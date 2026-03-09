@@ -106,11 +106,14 @@ def download_and_analyze(video_id: str) -> dict:
     try:
         output_path = os.path.join(tmp_dir, "audio.%(ext)s")
         ydl_opts = {
-            'format': 'bestaudio/best',
+            'format': 'worstaudio/worst',  # worstaudio=más rápido (solo necesitamos FFT), worst=fallback con audio+video
             'outtmpl': output_path,
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
         }
 
         # Indicar ubicación de ffmpeg si está disponible
