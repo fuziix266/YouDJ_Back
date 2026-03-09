@@ -1,0 +1,5 @@
+fastapi==0.115.0
+uvicorn==0.34.0
+yt-dlp==2025.1.15
+numpy==2.2.0
+pydub==0.25.1
