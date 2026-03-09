@@ -107,7 +107,7 @@ def download_and_analyze(video_id: str, cookies_str: Optional[str] = None) -> di
     try:
         output_path = os.path.join(tmp_dir, "audio.%(ext)s")
         ydl_opts = {
-            'format': 'worstaudio/worst',  # worstaudio=más rápido (solo necesitamos FFT), worst=fallback con audio+video
+            'format': 'bestaudio[ext=webm]/bestaudio/best',  # bestaudio más compatible con YouTube Music
             'outtmpl': output_path,
             'quiet': True,
             'no_warnings': True,
