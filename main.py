@@ -99,8 +99,12 @@ def download_and_analyze(video_id: str, cookies_str: Optional[str] = None) -> di
     if ffmpeg_path:
         logger.info(f"ffmpeg encontrado: {ffmpeg_path}")
 
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    logger.info(f"Descargando audio para {video_id}... (cookies: {'sí' if cookies_str else 'no'})")
+    # YouTube Music usa URLs diferentes a YouTube regular
+    if cookies_str:
+        url = f"https://music.youtube.com/watch?v={video_id}"
+    else:
+        url = f"https://www.youtube.com/watch?v={video_id}"
+    logger.info(f"Descargando audio para {video_id} desde {url} (cookies: {'sí' if cookies_str else 'no'})")
 
     # Descargar solo audio
     tmp_dir = tempfile.mkdtemp()
@@ -128,7 +132,10 @@ def download_and_analyze(video_id: str, cookies_str: Optional[str] = None) -> di
             with open(cookies_file, "w") as cf:
                 cf.write(cookies_str)
             ydl_opts['cookiefile'] = cookies_file
-            logger.info(f"Usando cookies file para {video_id}")
+            # Con cookies: habilitar logs para debugging
+            ydl_opts['quiet'] = False
+            ydl_opts['no_warnings'] = False
+            logger.info(f"Usando cookies file para {video_id} ({len(cookies_str.splitlines())} líneas)")
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
