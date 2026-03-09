@@ -5,12 +5,13 @@ import shutil
 import tempfile
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 # Configurar pydub para encontrar ffmpeg
 _ffmpeg_path = shutil.which("ffmpeg")
@@ -88,7 +89,7 @@ def extract_video_id(url_or_id: str) -> str:
     return url_or_id
 
 
-def download_and_analyze(video_id: str) -> dict:
+def download_and_analyze(video_id: str, cookies_str: Optional[str] = None) -> dict:
     """Descarga audio de YouTube y genera datos de waveform."""
     import yt_dlp
     import shutil
@@ -99,7 +100,7 @@ def download_and_analyze(video_id: str) -> dict:
         logger.info(f"ffmpeg encontrado: {ffmpeg_path}")
 
     url = f"https://www.youtube.com/watch?v={video_id}"
-    logger.info(f"Descargando audio para {video_id}...")
+    logger.info(f"Descargando audio para {video_id}... (cookies: {'sí' if cookies_str else 'no'})")
 
     # Descargar solo audio
     tmp_dir = tempfile.mkdtemp()
@@ -119,6 +120,15 @@ def download_and_analyze(video_id: str) -> dict:
         # Indicar ubicación de ffmpeg si está disponible
         if ffmpeg_path:
             ydl_opts['ffmpeg_location'] = os.path.dirname(ffmpeg_path)
+
+        # Si hay cookies, escribirlas como Netscape cookies.txt
+        cookies_file = None
+        if cookies_str:
+            cookies_file = os.path.join(tmp_dir, "cookies.txt")
+            with open(cookies_file, "w") as cf:
+                cf.write(cookies_str)
+            ydl_opts['cookiefile'] = cookies_file
+            logger.info(f"Usando cookies file para {video_id}")
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -240,14 +250,36 @@ async def root():
     return {"status": "ok", "service": "DJ Waveform API", "cached_tracks": cache_count}
 
 
-@app.get("/waveform")
-async def get_waveform(v: str = Query(..., description="YouTube video ID o URL")):
-    """Obtiene datos de waveform para un video de YouTube.
-    
-    Devuelve un array de 800 muestras normalizadas (0.0-1.0)
-    representando la amplitud con énfasis en frecuencias bajas.
-    """
-    video_id = extract_video_id(v)
+class CookieItem(BaseModel):
+    name: str
+    value: str
+    domain: str = ".youtube.com"
+    path: str = "/"
+    secure: bool = True
+    httpOnly: bool = False
+    expiresDate: Optional[float] = None
+
+class WaveformRequest(BaseModel):
+    video_id: str
+    cookies: Optional[List[CookieItem]] = None
+
+
+def _cookies_to_netscape(cookies: List[CookieItem]) -> str:
+    """Convierte lista de cookies a formato Netscape cookies.txt para yt-dlp."""
+    lines = ["# Netscape HTTP Cookie File"]
+    for c in cookies:
+        domain = c.domain if c.domain.startswith(".") else f".{c.domain}"
+        flag = "TRUE"  # domain aplicable a subdominios
+        path = c.path or "/"
+        secure = "TRUE" if c.secure else "FALSE"
+        expires = str(int(c.expiresDate)) if c.expiresDate else "0"
+        lines.append(f"{domain}\t{flag}\t{path}\t{secure}\t{expires}\t{c.name}\t{c.value}")
+    return "\n".join(lines)
+
+
+def _process_waveform(video_id: str, cookies_str: Optional[str] = None):
+    """Lógica compartida para GET y POST."""
+    video_id = extract_video_id(video_id)
 
     if not video_id or len(video_id) < 5:
         raise HTTPException(status_code=400, detail="Video ID inválido")
@@ -260,13 +292,32 @@ async def get_waveform(v: str = Query(..., description="YouTube video ID o URL")
 
     # Descargar y analizar
     logger.info(f"Cache miss para {video_id}, descargando...")
-    result = download_and_analyze(video_id)
+    result = download_and_analyze(video_id, cookies_str=cookies_str)
 
-    # Guardar en cache
-    save_to_cache(video_id, result)
-    logger.info(f"Waveform generado y cacheado para {video_id}")
+    # Guardar en cache solo si exitoso
+    if result.get("status") != "error":
+        save_to_cache(video_id, result)
+        logger.info(f"Waveform generado y cacheado para {video_id}")
+    else:
+        logger.warning(f"Waveform fallido para {video_id}: {result.get('error', 'unknown')}")
 
     return JSONResponse(content=result)
+
+
+@app.get("/waveform")
+async def get_waveform(v: str = Query(..., description="YouTube video ID o URL")):
+    """GET /waveform?v=VIDEO_ID — sin cookies (solo videos públicos)."""
+    return _process_waveform(v)
+
+
+@app.post("/waveform")
+async def post_waveform(req: WaveformRequest):
+    """POST /waveform — con cookies de YouTube para videos que requieren auth."""
+    cookies_str = None
+    if req.cookies:
+        cookies_str = _cookies_to_netscape(req.cookies)
+        logger.info(f"Recibidas {len(req.cookies)} cookies para {req.video_id}")
+    return _process_waveform(req.video_id, cookies_str=cookies_str)
 
 
 @app.delete("/cache/{video_id}")
