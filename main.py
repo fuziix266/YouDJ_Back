@@ -116,6 +116,9 @@ def download_and_analyze(video_id: str, cookies_str: Optional[str] = None) -> di
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
+            'geo_bypass': True,
+            'age_limit': None,
+            'extractor_args': {'youtube': {'player_client': ['android_music', 'web']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             },
