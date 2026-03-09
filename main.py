@@ -127,20 +127,9 @@ def download_and_analyze(video_id: str) -> dict:
                 duration = info.get('duration', 0)
         except Exception as e:
             logger.error(f"Error descargando {video_id}: {e}")
-            # Generar waveform procedural como fallback (no devolver error 500)
-            logger.info(f"Generando waveform procedural para {video_id}")
-            import hashlib
-            seed = int(hashlib.md5(video_id.encode()).hexdigest()[:8], 16)
-            rng = np.random.RandomState(seed)
-            # Generar waveform realista: combinación de ondas suaves
-            t = np.linspace(0, 10 * np.pi, num_samples)
-            base = 0.3 + 0.2 * np.sin(t * 0.5) + 0.15 * np.sin(t * 1.3) + 0.1 * np.sin(t * 2.7)
-            noise = rng.uniform(-0.1, 0.1, num_samples)
-            procedural = np.clip(base + noise, 0.0, 1.0)
-            waveform = [round(float(v), 4) for v in procedural]
-            waveform_cache[video_id] = waveform
+            # Retornar error limpio (no 500) — el frontend seguirá con visualización real-time
             shutil.rmtree(tmp_dir, ignore_errors=True)
-            return {"video_id": video_id, "waveform": waveform, "status": "procedural", "samples": len(waveform)}
+            return {"video_id": video_id, "waveform": [], "status": "error", "error": str(e), "samples": 0}
 
         # Buscar el archivo de audio generado
         audio_file = None
